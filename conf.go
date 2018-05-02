@@ -16,6 +16,7 @@ const (
 
 type config struct {
 	Addr     string
+	WgConf   string
 	Endpoint string
 }
 
@@ -36,6 +37,7 @@ func parseConfig() config {
 	var cfg config
 
 	flag.StringVar(&cfg.Addr, "addr", DEFAULT_ADDR, "Address to bind to")
+	flag.StringVar(&cfg.WgConf, "wgconf", "/etc/wireguard/wg0.conf", "WireGuard config path")
 	flag.StringVar(&cfg.Endpoint, "endpoint", DEFAULT_ENDPOINT, "Endpoint address of the server")
 	flag.Parse()
 

@@ -23,6 +23,15 @@ func (i *IP) UnmarshalText(text []byte) error {
 	i.IP, i.Net, err = net.ParseCIDR(string(bytes.TrimSpace(text)))
 	return err
 }
+func (i IP) Copy() IP {
+	return IP{
+		IP: append(net.IP{}, i.IP...),
+		Net: &net.IPNet{
+			IP:   append(net.IP{}, i.Net.IP...),
+			Mask: append(net.IPMask{}, i.Net.Mask...),
+		},
+	}
+}
 
 type IPSet []IP
 
@@ -66,4 +75,11 @@ func GetIP(base IP, n int) (net.IP, error) {
 		return nil, errors.New("Out of Addresses!")
 	}
 	return newip, nil
+}
+func (i IPSet) Copy() IPSet {
+	ret := make(IPSet, 0, len(i))
+	for _, ip := range i {
+		ret = append(ret, ip)
+	}
+	return ret
 }

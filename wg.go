@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/base64"
 	"fmt"
+	"net"
 	"os"
 	"strconv"
 	"strings"
@@ -53,8 +54,11 @@ func (wg *WG) Get(k WGKey) (*WGPeer, error) {
 			PublicKey: k,
 			AllowedIPs: IPSet{
 				IP{
-					IP:  ip,
-					Net: wg.Interface.Address.Net,
+					IP: ip,
+					Net: &net.IPNet{
+						IP:   ip,
+						Mask: net.CIDRMask(32, 32),
+					},
 				},
 			},
 		}
@@ -89,7 +93,7 @@ func (i WGInterface) String() string {
 func (i WGInterface) Peer() WGPeer {
 	return WGPeer{
 		PublicKey:  i.PrivateKey.Public(),
-		AllowedIPs: IPSet{i.Address},
+		AllowedIPs: IPSet{i.Address.Copy()},
 	}
 }
 
@@ -113,10 +117,15 @@ func (p WGPeer) String() string {
 	}
 	return buf.String()
 }
-func (p WGPeer) Interface() WGInterface {
+func (p WGPeer) Interface(ones, bits int) WGInterface {
+	addr := p.AllowedIPs[0].Copy()
+	addr.Net = &net.IPNet{
+		IP:   append(net.IP{}, addr.IP...),
+		Mask: net.CIDRMask(ones, bits),
+	}
 	return WGInterface{
 		PublicKey:  p.PublicKey,
-		Address:    p.AllowedIPs[0],
+		Address:    p.AllowedIPs[0].Copy(),
 		ListenPort: DEFAULT_PORT,
 	}
 }

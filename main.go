@@ -36,10 +36,9 @@ func (a *api) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	clientconf := &WG{
-		Interface: p.Interface(),
+		Interface: p.Interface(32, 32),
 		Peer:      []WGPeer{a.wg.Interface.Peer()},
 	}
-	clientconf.Peer[0].AllowedIPs = IPSet{a.wg.Interface.Address}
 	clientconf.Peer[0].Endpoint = a.cfg.Endpoint
 
 	fmt.Fprintf(w, "%s\n", clientconf)
@@ -56,7 +55,7 @@ func main() {
 	cfg := parseConfig()
 	fmt.Println(cfg)
 
-	wg, err := loadWG("/etc/wireguard/wg0.conf")
+	wg, err := loadWG(cfg.WgConf)
 	if err != nil {
 		log.Fatal(err)
 	}

@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"html/template"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -40,11 +41,14 @@ func (a *api) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	servpeer := a.wg.Interface.Peer()
+	servpeer.Endpoint = a.cfg.Endpoint
 	clientconf := &WG{
 		Interface: p.Interface(32, 32),
-		Peer:      []WGPeer{a.wg.Interface.Peer()},
+		Peer: map[WGKey]*WGPeer{
+			servpeer.PublicKey: &servpeer,
+		},
 	}
-	clientconf.Peer[0].Endpoint = a.cfg.Endpoint
 
 	fmt.Fprintf(w, "%s\n", clientconf)
 
@@ -58,6 +62,23 @@ func (a *api) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if err = updateConfig(a.cfg.Dev, p); err != nil {
 			log.Println(err)
 		}
+	}
+}
+
+type index struct {
+	Cfg config
+	WG  *WG
+}
+
+func (i index) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("here")
+	t := template.Must(template.ParseFiles("html/index.html"))
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	i.WG.Lock()
+	defer i.WG.Unlock()
+	err := t.Execute(w, i)
+	if err != nil {
+		log.Println(err)
 	}
 }
 
@@ -93,7 +114,8 @@ func main() {
 	fmt.Printf("%s\n", wg)
 
 	http.Handle("/api", newApi(cfg, wg))
-	http.Handle("/", http.FileServer(http.Dir("html/")))
+	http.Handle("/", index{cfg, wg})
+	http.Handle("/css/", http.FileServer(http.Dir("html/")))
 
 	if err = http.ListenAndServe(cfg.Addr, nil); err != nil {
 		log.Fatal(err)

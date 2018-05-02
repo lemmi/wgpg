@@ -17,8 +17,7 @@ import (
 type WG struct {
 	sync.Mutex
 	Interface WGInterface
-	Peer      []WGPeer
-	peers     map[WGKey]*WGPeer
+	Peer      map[WGKey]*WGPeer
 }
 
 func (wg *WG) String() string {
@@ -36,36 +35,33 @@ func (wg *WG) Get(k WGKey) (*WGPeer, error) {
 	wg.Lock()
 	defer wg.Unlock()
 
-	if wg.peers == nil {
-		wg.peers = make(map[WGKey]*WGPeer)
-		for i := range wg.Peer {
-			p := &wg.Peer[i]
-			wg.peers[p.PublicKey] = p
-		}
+	if wg.Peer == nil {
+		wg.Peer = make(map[WGKey]*WGPeer)
 	}
 
-	p, ok := wg.peers[k]
-	if !ok {
-		ip, err := GetIP(wg.Interface.Address, len(wg.Peer))
-		if err != nil {
-			return nil, err
-		}
-		newp := WGPeer{
-			PublicKey: k,
-			AllowedIPs: IPSet{
-				IP{
-					IP: ip,
-					Net: &net.IPNet{
-						IP:   ip,
-						Mask: net.CIDRMask(32, 32),
-					},
+	p, ok := wg.Peer[k]
+	if ok {
+		return p, nil
+	}
+
+	ip, err := GetIP(wg.Interface.Address, len(wg.Peer))
+	if err != nil {
+		return nil, err
+	}
+
+	p = &WGPeer{
+		PublicKey: k,
+		AllowedIPs: IPSet{
+			IP{
+				IP: ip,
+				Net: &net.IPNet{
+					IP:   ip,
+					Mask: net.CIDRMask(32, 32),
 				},
 			},
-		}
-		wg.Peer = append(wg.Peer, newp)
-		p = &wg.Peer[len(wg.Peer)-1]
-		wg.peers[k] = p
+		},
 	}
+	wg.Peer[k] = p
 
 	return p, nil
 }
@@ -169,6 +165,7 @@ const (
 
 func loadWG(path string) (*WG, error) {
 	wg := new(WG)
+	wg.Peer = make(map[WGKey]*WGPeer)
 	var err error
 
 	f, err := os.Open(path)
@@ -179,6 +176,7 @@ func loadWG(path string) (*WG, error) {
 
 	var section int
 	var linenumber int
+	var peerbuild *WGPeer
 	scan := bufio.NewScanner(f)
 	for scan.Scan() {
 		linenumber++
@@ -196,7 +194,7 @@ func loadWG(path string) (*WG, error) {
 			continue
 		case "[Peer]":
 			section = WG_SECTION_PEER
-			wg.Peer = append(wg.Peer, WGPeer{})
+			peerbuild = new(WGPeer)
 			continue
 		}
 
@@ -224,16 +222,18 @@ func loadWG(path string) (*WG, error) {
 				err = errors.Errorf("Invalid field %q", s[0])
 			}
 		case WG_SECTION_PEER:
-			P := &wg.Peer[len(wg.Peer)-1]
 			switch field {
 			case "allowedips":
-				err = P.AllowedIPs.UnmarshalText([]byte(s[1]))
+				err = peerbuild.AllowedIPs.UnmarshalText([]byte(s[1]))
 			case "publickey":
-				err = P.PublicKey.UnmarshalText([]byte(s[1]))
+				err = peerbuild.PublicKey.UnmarshalText([]byte(s[1]))
+				if err == nil {
+					wg.Peer[peerbuild.PublicKey] = peerbuild
+				}
 			case "endpoint":
-				P.Endpoint = s[1]
+				peerbuild.Endpoint = s[1]
 			case "persistentkeepalive":
-				P.PersistentKeepalive, err = strconv.Atoi(s[1])
+				peerbuild.PersistentKeepalive, err = strconv.Atoi(s[1])
 			default:
 				err = errors.Errorf("Invalid field %q", s[0])
 			}

@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"net"
 	"reflect"
 	"strings"
 	"text/tabwriter"
@@ -19,6 +20,7 @@ type config struct {
 	Dev      string
 	WgConf   string
 	Endpoint string
+	Host     string
 }
 
 func (cfg config) String() string {
@@ -45,6 +47,9 @@ func parseConfig() config {
 
 	if cfg.WgConf == "" {
 		cfg.WgConf = "/etc/wireguard/" + cfg.Dev + ".conf"
+	}
+	if cfg.Endpoint != "" {
+		cfg.Host, _, _ = net.SplitHostPort(cfg.Endpoint)
 	}
 
 	return cfg

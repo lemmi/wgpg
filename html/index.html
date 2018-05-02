@@ -3,7 +3,7 @@
 	<head>
 		<meta charset="utf-8">
 		<title>WireGuard Playground</title>
-		<link rel="stylesheet" href="sakura.css" type="text/css" media="screen" charset="utf-8">
+		<link rel="stylesheet" href="css/sakura.css" type="text/css" media="screen" charset="utf-8">
 		<style>
 input {
 	width: 100%;
@@ -54,7 +54,7 @@ input {
 			</div>
 		</form>
 		<h3>cURL</h3>
-		<p><code># curl http://127.0.0.1:8888/api --form 'PublicKey=...'</code></p>
+		<p><code># curl https://{{.Cfg.Host}}/api --form 'PublicKey=...'</code></p>
 		<h3>Beispiel Antwort:</h3>
 		<pre><code>[Interface]
 Address = 10.0.0.8/32
@@ -114,5 +114,13 @@ EndPoint = example.org:51820</code></pre>
 			<li><code># tcpdump -i wg0</code></li>
 			<li><code># tcpdump -i any</code></li>
 		</ul>
+
+		<hr>
+
+		<h2>Registrierte Peers</h2>
+		{{ range .WG.Peer }}
+		<h3 id="{{.PublicKey}}"><small>{{.AllowedIPs}}</small></h3>
+		<pre id="{{.PublicKey}}"><code>{{.}}</code></pre>
+		{{end}}
 	</body>
 </html>

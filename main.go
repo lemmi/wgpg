@@ -76,7 +76,7 @@ func updateConfig(dev string, p *WGPeer) error {
 		return errors.Wrap(err, "Cannot write config update")
 	}
 
-	cmd := exec.Command("wg", "setconf", dev, fname)
+	cmd := exec.Command("wg", "addconf", dev, fname)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()

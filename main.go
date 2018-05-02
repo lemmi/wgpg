@@ -71,7 +71,6 @@ type index struct {
 }
 
 func (i index) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("here")
 	t := template.Must(template.ParseFiles("html/index.html"))
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	i.WG.Lock()

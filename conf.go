@@ -11,7 +11,7 @@ import (
 const (
 	DEFAULT_PORT     = 51820
 	DEFAULT_ADDR     = "127.0.0.1:8888"
-	DEFAULT_ENDPOINT = "wg.lpm.pw:51820"
+	DEFAULT_ENDPOINT = "example.com:51820"
 )
 
 type config struct {
@@ -38,7 +38,7 @@ func parseConfig() config {
 	var cfg config
 
 	flag.StringVar(&cfg.Addr, "addr", DEFAULT_ADDR, "Address to bind to")
-	flag.StringVar(&cfg.WgConf, "dev", "", "WireGuard device")
+	flag.StringVar(&cfg.Dev, "dev", "", "WireGuard device")
 	flag.StringVar(&cfg.WgConf, "wgconf", "", "WireGuard config path")
 	flag.StringVar(&cfg.Endpoint, "endpoint", DEFAULT_ENDPOINT, "Endpoint address of the server")
 	flag.Parse()

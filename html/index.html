@@ -57,7 +57,7 @@ input {
 		<p><code># curl http://127.0.0.1:8888/api --form 'PublicKey=...'</code></p>
 		<h3>Beispiel Antwort:</h3>
 		<pre><code>[Interface]
-Address = 10.0.0.8/24
+Address = 10.0.0.8/32
 ListenPort = 51820
 PrivateKey = AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
 #PublicKey = L+V9o0fNYkMVKNqsX7spBzD/9oSvxM/C7ZCZX1jLO3Q=
@@ -110,6 +110,9 @@ EndPoint = example.org:51820</code></pre>
 			<li><code># wg --help</code></li>
 			<li><code># man 8 wg</code></li>
 			<li><code># man 8 wg-quick</code></li>
+			<li><code># ping 10.0.0.1</code></li>
+			<li><code># tcpdump -i wg0</code></li>
+			<li><code># tcpdump -i any</code></li>
 		</ul>
 	</body>
 </html>

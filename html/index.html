@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="utf-8">
+		<title>WireGuard Playground</title>
+		<link rel="stylesheet" href="sakura.css" type="text/css" media="screen" charset="utf-8">
+		<style>
+input {
+	width: 100%;
+}
+		</style>
+	</head>
+	<body>
+		<h1>WireGuard Playground</h1>
+
+		<hr>
+
+		<h2>Vorbereitungen</h2>
+		<h3>System</h3>
+		<ul>
+			<li>WireGuard installieren: <a href="https://www.wireguard.com/install/">https://www.wireguard.com/install/</a></li>
+			<li>IPv6 abstellen (einfachere config):<br/><code># echo 1 > /proc/sys/net/ipv6/conf/all/disable_ipv6</code></li>
+		</ul>
+		<h3>Schlüssel erzeugen</h3>
+		<h4>PrivateKey</h4>
+		<p><code># wg genkey | tee /tmp/privkey</code></p>
+		<h4>PublicKey</h4>
+		<p><code># wg pubkey &lt; /tmp/privkey | tee /tmp/pubkey</code></p>
+		<h4>Oder beides auf einmal</h4>
+		<p><code># wg genkey | tee /tmp/wg_priv_key | wg pubkey | tee /tmp/wg_pub_key</code></p>
+
+		<hr>
+
+		<h2>PublicKey registrieren</h2>
+		<p>
+		Um sich eine Config erstellen zu lassen, könnt ihr euren PublicKey
+		bei meinem Server eintragen lassen. Der weisst euch eine freie IP
+		für das VPN zu und erstellt euch eine Config. Ihr müsst lediglich
+		den <strong>PrivateKey mit eurem eigenen ergänzen</strong>
+		</p>
+		<p>
+		Ihr könnt die selbe Anfrage mehrmals stellen. Es wird immer die
+		gleiche Config erzeugt.
+		</p>
+
+		<h3>Browser:</h3>
+		<form action="/api" method="post">
+			<div>
+				<label for="PublicKey">PublicKey</label>
+				<input type="text" id="PublicKey" name="PublicKey" placeholder="WireGuard Base64 PublicKey...">
+			</div>
+			<div>
+				<button type="submit">Eintragen!</button>
+			</div>
+		</form>
+		<h3>cURL</h3>
+		<p><code># curl http://127.0.0.1:8888/api --form 'PublicKey=...'</code></p>
+		<h3>Beispiel Antwort:</h3>
+		<pre><code>[Interface]
+Address = 10.0.0.8/24
+ListenPort = 51820
+PrivateKey = AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+#PublicKey = L+V9o0fNYkMVKNqsX7spBzD/9oSvxM/C7ZCZX1jLO3Q=
+
+[Peer]
+PublicKey = /+c6wv7swJyGk6yR9KJg2dn6tev0A0DAHQY0Ej1OvEU=
+AllowedIPs = 10.0.0.1/24
+EndPoint = example.org:51820</code></pre>
+		<p>
+		Den Text solltet ihr nach <code>/etc/wireguard/wg0.conf</code>
+		kopieren und euren PrivateKey eintragen.
+		</p>
+
+		<hr>
+
+		<h2>WireGuard mit <code>wg-quick</code> starten</h2>
+		<p>
+		Wenn alles stimmt, dann könnt ihr das vpn mit
+		</p>
+		<p><code># wg-quick up wg0</code></p>
+		<p>
+		starten. <code>wg-quick</code> ist ein einfaches bash-script, das
+		automatisch alle Schlüssel, Peers, Routen setzen kann.
+		</p>
+		<p>
+		Mit
+		</p>
+		<p><code># wg-quick down wg0</code></p>
+		<p>
+		wird das Interface wieder heruntergefahren.
+		</p>
+
+		<hr>
+
+		<h2><code>wg</code></h2>
+		<p> 
+		Ihr könnt ich mit
+		</p>
+		<p><code># wg</code></p>
+		<p> 
+		den aktuellen Zustand und Statistiken ansehen. Ausserdem kann man auch
+		neue Peers hinzügen, oder auch die Config komplett austauschen, ohne
+		das Interface neu starten zu müssen.
+		</p>
+
+		<hr>
+
+		<h2>Sonstiges</h2>
+		<ul>
+			<li><code># wg --help</code></li>
+			<li><code># man 8 wg</code></li>
+			<li><code># man 8 wg-quick</code></li>
+		</ul>
+	</body>
+</html>

@@ -2,8 +2,13 @@ package main
 
 import (
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
+	"os"
+	"os/exec"
+
+	"github.com/pkg/errors"
 )
 
 type api struct {
@@ -49,6 +54,32 @@ func (a *api) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	fmt.Printf("\n\n#Serverconf\n")
 	fmt.Printf("%s\n", a.wg)
 
+	if a.cfg.Dev != "" {
+		if err = updateConfig(a.cfg.Dev, p); err != nil {
+			log.Println(err)
+		}
+	}
+}
+
+func updateConfig(dev string, p *WGPeer) error {
+	f, err := ioutil.TempFile("/tmp", "")
+	if err != nil {
+		return errors.Wrap(err, "Cannot write config update")
+	}
+
+	fname := f.Name()
+	defer os.Remove(fname)
+
+	_, err = f.WriteString(p.String())
+	f.Close()
+	if err != nil {
+		return errors.Wrap(err, "Cannot write config update")
+	}
+
+	cmd := exec.Command("wg", "setconf", dev, fname)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
 }
 
 func main() {

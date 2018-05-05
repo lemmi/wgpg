@@ -1,23 +1,75 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"html/template"
 	"io/ioutil"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
+	"reflect"
+	"strings"
+	"text/tabwriter"
 
+	"github.com/lemmi/wgpg"
 	"github.com/pkg/errors"
 )
 
-type api struct {
-	cfg config
-	wg  *WG
+const (
+	DEFAULT_PORT     = 51820
+	DEFAULT_ADDR     = "127.0.0.1:8888"
+	DEFAULT_ENDPOINT = "example.com:51820"
+)
+
+type config struct {
+	Addr     string
+	Dev      string
+	WgConf   string
+	Endpoint string
+	Host     string
 }
 
-func newApi(cfg config, wg *WG) *api {
+func (cfg config) String() string {
+	buf := strings.Builder{}
+	w := tabwriter.NewWriter(&buf, 0, 0, 1, ' ', 0)
+	vcfg := reflect.ValueOf(cfg)
+	for i := 0; i < vcfg.NumField(); i++ {
+		name := vcfg.Type().Field(i).Name
+		field := vcfg.Field(i).Interface()
+		fmt.Fprintln(w, name, "\t", field)
+	}
+	w.Flush()
+	return buf.String()
+}
+
+func parseConfig() config {
+	var cfg config
+
+	flag.StringVar(&cfg.Addr, "addr", DEFAULT_ADDR, "Address to bind to")
+	flag.StringVar(&cfg.Dev, "dev", "", "WireGuard device")
+	flag.StringVar(&cfg.WgConf, "wgconf", "", "WireGuard config path")
+	flag.StringVar(&cfg.Endpoint, "endpoint", DEFAULT_ENDPOINT, "Endpoint address of the server")
+	flag.Parse()
+
+	if cfg.WgConf == "" {
+		cfg.WgConf = "/etc/wireguard/" + cfg.Dev + ".conf"
+	}
+	if cfg.Endpoint != "" {
+		cfg.Host, _, _ = net.SplitHostPort(cfg.Endpoint)
+	}
+
+	return cfg
+}
+
+type api struct {
+	cfg config
+	wg  *wgpg.WG
+}
+
+func newApi(cfg config, wg *wgpg.WG) *api {
 	ret := &api{
 		cfg: cfg,
 		wg:  wg,
@@ -27,7 +79,7 @@ func newApi(cfg config, wg *WG) *api {
 }
 
 func (a *api) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	var key WGKey
+	var key wgpg.Key
 	keyBase64 := r.FormValue("PublicKey")
 	err := key.UnmarshalText([]byte(keyBase64))
 	if err != nil {
@@ -42,11 +94,11 @@ func (a *api) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	servpeer := a.wg.Interface.Peer()
-	servpeer.Endpoint = a.cfg.Endpoint
-	clientconf := &WG{
-		Interface: p.Interface(32, 32),
-		Peer: map[WGKey]*WGPeer{
-			servpeer.PublicKey: &servpeer,
+	servpeer.EndPoint = a.cfg.Endpoint
+	clientconf := &wgpg.WG{
+		Interface: p.Interface(32, 32, DEFAULT_PORT),
+		Peer: wgpg.PeerMap{
+			servpeer.PublicKey: servpeer,
 		},
 	}
 
@@ -67,7 +119,7 @@ func (a *api) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 type index struct {
 	Cfg config
-	WG  *WG
+	WG  *wgpg.WG
 }
 
 func (i index) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -81,7 +133,7 @@ func (i index) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func updateConfig(dev string, p *WGPeer) error {
+func updateConfig(dev string, p wgpg.Peer) error {
 	f, err := ioutil.TempFile("/tmp", "")
 	if err != nil {
 		return errors.Wrap(err, "Cannot write config update")
@@ -106,7 +158,7 @@ func main() {
 	cfg := parseConfig()
 	fmt.Println(cfg)
 
-	wg, err := loadWG(cfg.WgConf)
+	wg, err := wgpg.LoadWG(cfg.WgConf)
 	if err != nil {
 		log.Fatal(err)
 	}

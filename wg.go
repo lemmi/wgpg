@@ -1,4 +1,4 @@
-package main
+package wgpg
 
 import (
 	"bufio"
@@ -16,8 +16,8 @@ import (
 
 type WG struct {
 	sync.Mutex
-	Interface WGInterface
-	Peer      map[WGKey]*WGPeer
+	Interface Interface
+	Peer      PeerMap
 }
 
 func (wg *WG) String() string {
@@ -31,81 +31,90 @@ func (wg *WG) String() string {
 	}
 	return buf.String()
 }
-func (wg *WG) Get(k WGKey) (*WGPeer, error) {
+func (wg *WG) Get(k Key) (Peer, error) {
 	wg.Lock()
 	defer wg.Unlock()
-
-	if wg.Peer == nil {
-		wg.Peer = make(map[WGKey]*WGPeer)
-	}
 
 	p, ok := wg.Peer[k]
 	if ok {
 		return p, nil
 	}
 
-	ip, err := GetIP(wg.Interface.Address, len(wg.Peer))
+	start, end := wg.Interface.Address.Range()
+	ip, err := GetIP(start, end, len(wg.Peer)+2)
 	if err != nil {
-		return nil, err
+		return p, err
 	}
-
-	p = &WGPeer{
-		PublicKey: k,
-		AllowedIPs: IPSet{
-			IP{
-				IP: ip,
-				Net: &net.IPNet{
-					IP:   ip,
-					Mask: net.CIDRMask(32, 32),
-				},
-			},
-		},
-	}
-	wg.Peer[k] = p
-
-	return p, nil
+	p = Peer{PublicKey: k,
+		AllowedIPs: IP{
+			IP: ip,
+			Net: &net.IPNet{
+				IP:   ip,
+				Mask: net.CIDRMask(32, 32),
+			}}.IPSet()}
+	return wg.Peer.Set(p), nil
 }
 
-type WGInterface struct {
+type PeerMap map[Key]Peer
+
+func (peers *PeerMap) Set(p Peer) Peer {
+	if *peers == nil {
+		*peers = make(PeerMap)
+	}
+
+	(*peers)[p.PublicKey] = p
+	return p
+}
+
+type Interface struct {
 	Address    IP
 	ListenPort int
-	PrivateKey WGKey
-	PublicKey  WGKey
+	PrivateKey Key
+	PublicKey  Key
 }
 
-func (i WGInterface) String() string {
+func (i Interface) String() string {
 	var buf strings.Builder
 	fmt.Fprintln(&buf, "[Interface]")
 	fmt.Fprintf(&buf, "Address = %s\n", i.Address)
 	fmt.Fprintf(&buf, "ListenPort = %d\n", i.ListenPort)
 	fmt.Fprintf(&buf, "PrivateKey = %s\n", i.PrivateKey)
-	if (WGKey{}) != i.PublicKey {
+	if i.PublicKey.IsNull() {
 		fmt.Fprintf(&buf, "#PublicKey = %s\n", i.PublicKey)
 	} else {
 		fmt.Fprintf(&buf, "#PublicKey = %s\n", i.PrivateKey.Public())
 	}
 	return buf.String()
 }
-func (i WGInterface) Peer() WGPeer {
-	return WGPeer{
+func (i Interface) Peer() Peer {
+	return Peer{
 		PublicKey:  i.PrivateKey.Public(),
-		AllowedIPs: IPSet{i.Address.Copy()},
+		AllowedIPs: i.Address.IPSet(),
 	}
 }
 
-type WGPeer struct {
-	PublicKey           WGKey
+type Peer struct {
+	PublicKey           Key
 	AllowedIPs          IPSet
-	Endpoint            string
+	EndPoint            string
 	PersistentKeepalive int
 }
 
-func (p WGPeer) String() string {
+func NewPeer(k Key, ips IPSet, e string, persistentkeepalive int) Peer {
+	return Peer{
+		PublicKey:           k,
+		AllowedIPs:          ips.Copy(),
+		EndPoint:            e,
+		PersistentKeepalive: persistentkeepalive,
+	}
+}
+
+func (p Peer) String() string {
 	var buf strings.Builder
 	fmt.Fprintln(&buf, "[Peer]")
 	fmt.Fprintf(&buf, "PublicKey = %s\n", p.PublicKey)
 	fmt.Fprintf(&buf, "AllowedIPs = %s\n", p.AllowedIPs)
-	if e := p.Endpoint; e != "" {
+	if e := p.EndPoint; e != "" {
 		fmt.Fprintf(&buf, "EndPoint = %s\n", e)
 	}
 	if pk := p.PersistentKeepalive; pk > 0 {
@@ -113,31 +122,31 @@ func (p WGPeer) String() string {
 	}
 	return buf.String()
 }
-func (p WGPeer) Interface(ones, bits int) WGInterface {
+func (p Peer) Interface(ones, bits int, port int) Interface {
 	addr := p.AllowedIPs[0].Copy()
 	addr.Net = &net.IPNet{
 		IP:   append(net.IP{}, addr.IP...),
 		Mask: net.CIDRMask(ones, bits),
 	}
-	return WGInterface{
+	return Interface{
 		PublicKey:  p.PublicKey,
 		Address:    p.AllowedIPs[0].Copy(),
-		ListenPort: DEFAULT_PORT,
+		ListenPort: port,
 	}
 }
 
-type WGKey [32]byte
+type Key [32]byte
 
-func (k WGKey) String() string {
+func (k Key) String() string {
 	s, _ := k.MarshalText()
 	return string(s)
 }
-func (k WGKey) MarshalText() ([]byte, error) {
+func (k Key) MarshalText() ([]byte, error) {
 	buf := make([]byte, base64.StdEncoding.EncodedLen(len(k)))
 	base64.StdEncoding.Encode(buf, k[:])
 	return buf, nil
 }
-func (k *WGKey) UnmarshalText(text []byte) error {
+func (k *Key) UnmarshalText(text []byte) error {
 	buf := make([]byte, 36)
 	n, err := base64.StdEncoding.Decode(buf, text)
 	if err != nil {
@@ -149,12 +158,15 @@ func (k *WGKey) UnmarshalText(text []byte) error {
 	copy(k[:], buf)
 	return nil
 }
-func (k WGKey) Public() WGKey {
+func (k Key) Public() Key {
 	var dst [32]byte
 	in := [32]byte(k)
 	curve25519.ScalarBaseMult(&dst, &in)
 
-	return WGKey(dst)
+	return Key(dst)
+}
+func (k Key) IsNull() bool {
+	return k == Key{}
 }
 
 const (
@@ -163,9 +175,9 @@ const (
 	WG_SECTION_PEER
 )
 
-func loadWG(path string) (*WG, error) {
+func LoadWG(path string) (*WG, error) {
 	wg := new(WG)
-	wg.Peer = make(map[WGKey]*WGPeer)
+	wg.Peer = make(PeerMap)
 	var err error
 
 	f, err := os.Open(path)
@@ -176,7 +188,7 @@ func loadWG(path string) (*WG, error) {
 
 	var section int
 	var linenumber int
-	var peerbuild *WGPeer
+	var peerbuild Peer
 	scan := bufio.NewScanner(f)
 	for scan.Scan() {
 		linenumber++
@@ -194,7 +206,13 @@ func loadWG(path string) (*WG, error) {
 			continue
 		case "[Peer]":
 			section = WG_SECTION_PEER
-			peerbuild = new(WGPeer)
+			if !peerbuild.PublicKey.IsNull() {
+				wg.Peer.Set(peerbuild)
+			}
+			peerbuild = Peer{}
+			continue
+		}
+		if section == WG_SECTION_NONE {
 			continue
 		}
 
@@ -204,7 +222,7 @@ func loadWG(path string) (*WG, error) {
 		}
 
 		field := strings.ToLower(strings.TrimSpace(s[0]))
-		s[1] = strings.TrimSpace(s[1])
+		value := strings.TrimSpace(s[1])
 
 		switch section {
 		case WG_SECTION_NONE:
@@ -213,27 +231,24 @@ func loadWG(path string) (*WG, error) {
 			I := &wg.Interface
 			switch field {
 			case "address":
-				err = I.Address.UnmarshalText([]byte(s[1]))
+				err = I.Address.UnmarshalText([]byte(value))
 			case "privatekey":
-				err = I.PrivateKey.UnmarshalText([]byte(s[1]))
+				err = I.PrivateKey.UnmarshalText([]byte(value))
 			case "listenport":
-				I.ListenPort, err = strconv.Atoi(s[1])
+				I.ListenPort, err = strconv.Atoi(value)
 			default:
 				err = errors.Errorf("Invalid field %q", s[0])
 			}
 		case WG_SECTION_PEER:
 			switch field {
 			case "allowedips":
-				err = peerbuild.AllowedIPs.UnmarshalText([]byte(s[1]))
+				err = peerbuild.AllowedIPs.UnmarshalText([]byte(value))
 			case "publickey":
-				err = peerbuild.PublicKey.UnmarshalText([]byte(s[1]))
-				if err == nil {
-					wg.Peer[peerbuild.PublicKey] = peerbuild
-				}
+				err = peerbuild.PublicKey.UnmarshalText([]byte(value))
 			case "endpoint":
-				peerbuild.Endpoint = s[1]
+				peerbuild.EndPoint = value
 			case "persistentkeepalive":
-				peerbuild.PersistentKeepalive, err = strconv.Atoi(s[1])
+				peerbuild.PersistentKeepalive, err = strconv.Atoi(value)
 			default:
 				err = errors.Errorf("Invalid field %q", s[0])
 			}
@@ -242,6 +257,10 @@ func loadWG(path string) (*WG, error) {
 		if err != nil {
 			return nil, errors.Wrapf(err, "ERROR: Line %d", linenumber)
 		}
+	}
+
+	if !peerbuild.PublicKey.IsNull() {
+		wg.Peer.Set(peerbuild)
 	}
 
 	return wg, nil

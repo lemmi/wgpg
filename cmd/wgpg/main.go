@@ -96,7 +96,7 @@ func (a *api) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	servpeer := a.wg.Interface.Peer()
 	servpeer.EndPoint = a.cfg.Endpoint
 	clientconf := &wgpg.WG{
-		Interface: p.Interface(32, 32, DEFAULT_PORT),
+		Interface: p.Interface(DEFAULT_PORT),
 		Peer: wgpg.PeerMap{
 			servpeer.PublicKey: servpeer,
 		},
@@ -163,6 +163,7 @@ func main() {
 		log.Fatal(err)
 	}
 	fmt.Printf("%s\n", wg)
+	fmt.Printf("%x\n", wg.Interface.Address.Addr)
 
 	http.Handle("/api", newApi(cfg, wg))
 	http.Handle("/", index{cfg, wg})

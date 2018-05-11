@@ -29,7 +29,7 @@ This tool aims to make the first contact with WireGuard even easier with a group
 	* Currently every new PublicKey gets the next free IP until the the subnet is exhausted
 	* No dead peer removal
 	* No IP reuse
-* [ ] Untangle the net.IP / *net.IPNet mess
 * [ ] Factor out wg-quick config file format into a library
 * [ ] Add script to make client configs fully automatic (like https://www.wireguard.com/quickstart/#demo-server)
 * [ ] Add License
+* [x] Untangle the `net.IP` / `*net.IPNet` mess

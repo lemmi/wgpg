@@ -75,7 +75,7 @@ func (i Interface) String() string {
 	fmt.Fprintf(&buf, "Address = %s\n", i.Address)
 	fmt.Fprintf(&buf, "ListenPort = %d\n", i.ListenPort)
 	fmt.Fprintf(&buf, "PrivateKey = %s\n", i.PrivateKey)
-	if i.PublicKey.IsNull() {
+	if !i.PublicKey.IsNull() {
 		fmt.Fprintf(&buf, "#PublicKey = %s\n", i.PublicKey)
 	} else {
 		fmt.Fprintf(&buf, "#PublicKey = %s\n", i.PrivateKey.Public())
@@ -85,7 +85,7 @@ func (i Interface) String() string {
 func (i Interface) Peer() Peer {
 	return Peer{
 		PublicKey:  i.PrivateKey.Public(),
-		AllowedIPs: i.Address.IPSet(),
+		AllowedIPs: i.Address.Host().IPSet(),
 	}
 }
 

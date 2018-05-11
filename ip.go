@@ -9,6 +9,8 @@ import (
 	"github.com/pkg/errors"
 )
 
+var ip4in6prefix = [12]byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff}
+
 type IP struct {
 	Addr      [16]byte
 	AddrLen   uint8
@@ -28,35 +30,36 @@ func (i *IP) UnmarshalText(text []byte) error {
 	}
 
 	i.AddrLen, i.PrefixLen = uint8(bits), uint8(ones)
-	copy(i.Addr[:], ip)
-	return nil
-}
-func (i IP) netIP() net.IP {
-	return net.IP(i.Addr[16-i.AddrLen/8:])
+	*i = i.setBytes(ip)
+	return err
 }
 func (i IP) NetIP() net.IP {
-	return append(net.IP{}, i.netIP()...)
+	if bytes.HasPrefix(i.Addr[:], ip4in6prefix[:]) {
+		return net.IP(i.Addr[12:])
+	} else {
+		return net.IP(i.Addr[16-i.AddrLen/8:])
+	}
 }
 func (i IP) NetMask() net.IPMask {
 	return net.CIDRMask(int(i.PrefixLen), int(i.AddrLen))
 }
 func (i IP) Network() IP {
-	network := i.netIP().Mask(i.NetMask())
+	network := i.NetIP().Mask(i.NetMask())
 	copy(i.Addr[:], network)
 	return i
 }
 func (i IP) String() string {
 	return (&net.IPNet{
-		IP:   i.netIP(),
+		IP:   i.NetIP(),
 		Mask: i.NetMask(),
 	}).String()
 }
 func (i IP) Contains(ip IP) bool {
 	ipnet := net.IPNet{
-		IP:   i.netIP(),
+		IP:   i.NetIP(),
 		Mask: i.NetMask(),
 	}
-	return ipnet.Contains(ip.netIP())
+	return ipnet.Contains(ip.NetIP())
 }
 func (i IP) IPSet() IPSet {
 	return IPSet{i}
@@ -75,9 +78,12 @@ func (i IP) Host() IP {
 	i.PrefixLen = i.AddrLen
 	return i
 }
-
 func (i IP) BigInt() *big.Int {
-	return new(big.Int).SetBytes(i.netIP())
+	return new(big.Int).SetBytes(i.NetIP())
+}
+func (i IP) setBytes(b []byte) IP {
+	copy(i.Addr[16-len(b):], b)
+	return i
 }
 
 type IPSet []IP
@@ -110,10 +116,14 @@ func (i *IPSet) UnmarshalText(text []byte) error {
 	return nil
 }
 func (is IPSet) Sort() IPSet {
-	sort.Slice(is, func(i, j int) bool {
-		return is[i].PrefixLen > is[j].PrefixLen
-	})
+	sort.Slice(is, is.Less)
 	return is
+}
+func (is IPSet) Less(i, j int) bool {
+	if is[i].AddrLen-is[i].PrefixLen < is[j].AddrLen-is[j].PrefixLen {
+		return true
+	}
+	return bytes.Compare(is[i].Addr[:], is[j].Addr[:]) == -1
 }
 
 func GetIP(start, end IP, n int) (ip IP, err error) {
@@ -124,10 +134,7 @@ func GetIP(start, end IP, n int) (ip IP, err error) {
 	if nip.Cmp(eip) != -1 {
 		return IP{}, errors.Errorf("Out of Addresses: %d < %d < %d", sip, nip, eip)
 	}
-	nipbytes := nip.Bytes()
-	t := start
-	copy(t.Addr[16-len(nipbytes):], nipbytes)
-	return t, nil
+	return start.setBytes(nip.Bytes()), nil
 }
 func (i IPSet) Copy() IPSet {
 	ret := make(IPSet, 0, len(i))

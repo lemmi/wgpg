@@ -90,6 +90,7 @@ func (a *api) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	p, err := a.wg.Get(key)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
+		log.Printf("%+v\n", err)
 		return
 	}
 
@@ -163,7 +164,6 @@ func main() {
 		log.Fatal(err)
 	}
 	fmt.Printf("%s\n", wg)
-	fmt.Printf("%x\n", wg.Interface.Address.Addr)
 
 	http.Handle("/api", newApi(cfg, wg))
 	http.Handle("/", index{cfg, wg})

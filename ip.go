@@ -17,6 +17,11 @@ type IP struct {
 	PrefixLen uint8
 }
 
+func ParseIP(text string) (IP, error) {
+	var ret IP
+	err := ret.UnmarshalText([]byte(text))
+	return ret, err
+}
 func (i *IP) UnmarshalText(text []byte) error {
 	var err error
 	ip, ipnet, err := net.ParseCIDR(string(bytes.TrimSpace(text)))
@@ -45,8 +50,7 @@ func (i IP) NetMask() net.IPMask {
 }
 func (i IP) Network() IP {
 	network := i.NetIP().Mask(i.NetMask())
-	copy(i.Addr[:], network)
-	return i
+	return i.setBytes(network)
 }
 func (i IP) String() string {
 	return (&net.IPNet{
@@ -82,6 +86,9 @@ func (i IP) BigInt() *big.Int {
 	return new(big.Int).SetBytes(i.NetIP())
 }
 func (i IP) setBytes(b []byte) IP {
+	if i.AddrLen/8 <= 4 {
+		copy(i.Addr[:], ip4in6prefix[:])
+	}
 	copy(i.Addr[16-len(b):], b)
 	return i
 }
@@ -120,9 +127,19 @@ func (is IPSet) Sort() IPSet {
 	return is
 }
 func (is IPSet) Less(i, j int) bool {
-	if is[i].AddrLen-is[i].PrefixLen < is[j].AddrLen-is[j].PrefixLen {
-		return true
+	// sort v4 before v6
+	ai := is[i].AddrLen
+	aj := is[j].AddrLen
+	if ai != aj {
+		return ai < aj
 	}
+	// sort more specific before less specific
+	li := ai - is[i].PrefixLen
+	lj := aj - is[j].PrefixLen
+	if li != lj {
+		return li < lj
+	}
+	// sort by address
 	return bytes.Compare(is[i].Addr[:], is[j].Addr[:]) == -1
 }
 
@@ -137,9 +154,7 @@ func GetIP(start, end IP, n int) (ip IP, err error) {
 	return start.setBytes(nip.Bytes()), nil
 }
 func (i IPSet) Copy() IPSet {
-	ret := make(IPSet, 0, len(i))
-	for _, ip := range i {
-		ret = append(ret, ip)
-	}
+	ret := make(IPSet, len(i))
+	copy(ret, i)
 	return ret
 }

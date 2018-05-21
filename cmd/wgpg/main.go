@@ -122,20 +122,27 @@ func (a *api) ServeAPI(w http.ResponseWriter, r *http.Request) {
 
 func (a *api) ServeIndex(w http.ResponseWriter, r *http.Request) {
 	const htmldir = "html/lang"
-	supported, err := getSupportedLanguages(htmldir)
+	supportedlangs, err := getSupportedLanguages(htmldir)
+	supported := language.NewMatcher(supportedlangs)
 	if err != nil {
 		log.Println("getSupportedLanguages:", err)
 	}
 
 	if r.URL.Path == "/" {
 		t, _, _ := language.ParseAcceptLanguage(r.Header.Get("Accept-Language"))
-		lang := getBestLanguage(supported, t...)
-		http.Redirect(w, r, lang, http.StatusFound)
+		match, _, _ := supported.Match(t...)
+		http.Redirect(w, r, match.String(), http.StatusFound)
 		return
 	}
 	lang := strings.TrimLeft(r.URL.Path, "/")
-	lang = strings.SplitN(lang, "/", 1).[0]
-	lang = getBestLanguage(supported, language.Make(lang))
+	lang = strings.SplitN(lang, "/", 1)[0]
+	_, i := language.MatchStrings(supported, lang)
+	matched := supportedlangs[i].String()
+
+	if lang != matched {
+		http.Redirect(w, r, matched, http.StatusFound)
+		return
+	}
 
 	tpath := filepath.Join(htmldir, lang, "index.html")
 	t := template.Must(template.ParseFiles(tpath))
@@ -149,7 +156,7 @@ func (a *api) ServeIndex(w http.ResponseWriter, r *http.Request) {
 		log.Println(err)
 	}
 }
-func getSupportedLanguages(dir string) (language.Matcher, error) {
+func getSupportedLanguages(dir string) ([]language.Tag, error) {
 	var langs []language.Tag
 
 	dirs, err := ioutil.ReadDir(dir)
@@ -165,13 +172,13 @@ func getSupportedLanguages(dir string) (language.Matcher, error) {
 		if err != nil {
 			return nil, err
 		}
-		langs = append(langs, tag)
+		if tag == language.English {
+			langs = append([]language.Tag{tag}, langs...)
+		} else {
+			langs = append(langs, tag)
+		}
 	}
-	return language.NewMatcher(langs), nil
-}
-func getBestLanguage(m language.Matcher, t ...language.Tag) string {
-	ret, _, _ := m.Match(t...)
-	return ret.String()
+	return langs, nil
 }
 
 func updateConfig(dev string, p wgpg.Peer) error {

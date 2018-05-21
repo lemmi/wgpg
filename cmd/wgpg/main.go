@@ -10,12 +10,14 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"text/tabwriter"
 
 	"github.com/lemmi/wgpg"
 	"github.com/pkg/errors"
+	"golang.org/x/text/language"
 )
 
 const (
@@ -119,14 +121,57 @@ func (a *api) ServeAPI(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *api) ServeIndex(w http.ResponseWriter, r *http.Request) {
-	t := template.Must(template.ParseFiles("html/index.html"))
+	const htmldir = "html/lang"
+	supported, err := getSupportedLanguages(htmldir)
+	if err != nil {
+		log.Println("getSupportedLanguages:", err)
+	}
+
+	if r.URL.Path == "/" {
+		t, _, _ := language.ParseAcceptLanguage(r.Header.Get("Accept-Language"))
+		lang := getBestLanguage(supported, t...)
+		http.Redirect(w, r, lang, http.StatusFound)
+		return
+	}
+	lang := strings.TrimLeft(r.URL.Path, "/")
+	lang = strings.SplitN(lang, "/", 1).[0]
+	lang = getBestLanguage(supported, language.Make(lang))
+
+	tpath := filepath.Join(htmldir, lang, "index.html")
+	t := template.Must(template.ParseFiles(tpath))
+
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+
 	a.WG.Lock()
 	defer a.WG.Unlock()
-	err := t.Execute(w, a)
+	err = t.Execute(w, a)
 	if err != nil {
 		log.Println(err)
 	}
+}
+func getSupportedLanguages(dir string) (language.Matcher, error) {
+	var langs []language.Tag
+
+	dirs, err := ioutil.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, dir := range dirs {
+		if !dir.IsDir() {
+			continue
+		}
+		tag, err := language.Parse(dir.Name())
+		if err != nil {
+			return nil, err
+		}
+		langs = append(langs, tag)
+	}
+	return language.NewMatcher(langs), nil
+}
+func getBestLanguage(m language.Matcher, t ...language.Tag) string {
+	ret, _, _ := m.Match(t...)
+	return ret.String()
 }
 
 func updateConfig(dev string, p wgpg.Peer) error {

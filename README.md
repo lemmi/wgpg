@@ -15,9 +15,9 @@ This tool aims to make the first contact with WireGuard even easier with a group
 * [ ] Include all web assets within the binary (go generate)
 * [ ] Dedicated api endpoint with html output for browsers 
 * [ ] Add config file with reasonable defaults
-* [ ] Translations / Multilang support
+* [x] Translations / Multilang support
 	* [x] de - mostly done, typos
-	* [ ] en
+	* [x] en
 	* [ ] PRs welcome
 * [ ] Eliminate shelling out to `wg` (just out of curiousity)
 * [ ] Investigate if parts can run without root

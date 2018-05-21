@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<title>WireGuard Playground</title>
+		<link rel="stylesheet" href="css/sakura.css" type="text/css" media="screen" charset="utf-8">
+		<style>
+input {
+	width: 100%;
+}
+		</style>
+	</head>
+	<body>
+		<h1>WireGuard Playground</h1>
+
+		<hr>
+
+		<h2>Preparations</h2>
+		<h3>System</h3>
+		<ul>
+			<li>Install WireGuard: <a href="https://www.wireguard.com/install/">https://www.wireguard.com/install/</a></li>
+			<li>Disable IPv6 for smaller config:<br/><code># echo 1 > /proc/sys/net/ipv6/conf/all/disable_ipv6</code></li>
+		</ul>
+		<h3>Key Generation</h3>
+		<h4>PrivateKey</h4>
+		<p><code># wg genkey | tee /tmp/privkey</code></p>
+		<h4>PublicKey</h4>
+		<p><code># wg pubkey &lt; /tmp/privkey | tee /tmp/pubkey</code></p>
+		<h4>One-liner</h4>
+		<p><code># wg genkey | tee /tmp/wg_priv_key | wg pubkey | tee /tmp/wg_pub_key</code></p>
+
+		<hr>
+
+		<h2>Register PublicKey</h2>
+		<p>
+		To generate a config, you can register you PublicKey with this server.
+		You will be assigned a free IP for the VPN and a corresponding config
+		will will be generated. The config will not contain your PrivateKey, so
+		you will <strong>need to add your own PrivateKey to the
+		config.</strong>
+		</p>
+		<p>
+		You can register the same PublicKey multiple times, but this will still
+		return the same config.
+		</p>
+
+		<h3>Browser:</h3>
+		<form action="/api" method="post">
+			<div>
+				<label for="PublicKey">PublicKey</label>
+				<input type="text" id="PublicKey" name="PublicKey" placeholder="WireGuard Base64 PublicKey...">
+			</div>
+			<div>
+				<button type="submit">Register!</button>
+			</div>
+		</form>
+		<h3>cURL</h3>
+		<p><code># curl https://{{.Cfg.Host}}/api --form 'PublicKey=...'</code></p>
+		<h3>Example Response:</h3>
+		<pre><code>[Interface]
+Address = 10.0.0.8/32
+ListenPort = 51820
+PrivateKey = AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+#PublicKey = L+V9o0fNYkMVKNqsX7spBzD/9oSvxM/C7ZCZX1jLO3Q=
+
+[Peer]
+PublicKey = /+c6wv7swJyGk6yR9KJg2dn6tev0A0DAHQY0Ej1OvEU=
+AllowedIPs = 10.0.0.1/24
+EndPoint = example.org:51820</code></pre>
+		<p>
+		You should save the response to <code>/etc/wireguard/wg0.conf</code>
+		and fill in you PrivateKey.
+		</p>
+
+		<hr>
+
+		<h2>Start WireGuard <code>wg-quick</code></h2>
+		<p>
+		With the correct config in place, you can start the VPN with:
+		</p>
+		<p><code># wg-quick up wg0</code></p>
+		<p>
+		<code>wg-quick</code> is a simple script to setup the device, keys,
+		peers and routes.
+		</p>
+		<p>
+		To remove the tunnel, use
+		</p>
+		<p><code># wg-quick down wg0</code></p>
+		<p>
+		</p>
+
+		<hr>
+
+		<h2><code>wg</code></h2>
+		<p> 
+		To list the current state and stats, use
+		</p>
+		<p><code># wg</code></p>
+		<p> 
+		With the same tool you can dynamically add Peers or load a new
+		configuration without restarting the interface.
+		</p>
+
+		<hr>
+
+		<h2>Things to try:</h2>
+		<ul>
+			<li><code># wg --help</code></li>
+			<li><code># man 8 wg</code></li>
+			<li><code># man 8 wg-quick</code></li>
+			<li><code># ping 10.0.0.1</code></li>
+			<li><code># tcpdump -i wg0</code></li>
+			<li><code># tcpdump -i any</code></li>
+		</ul>
+
+		<hr>
+
+		<h2>Registered Peers</h2>
+		{{ range .WG.Peer }}
+		<h3 id="{{.PublicKey}}"><small>{{.AllowedIPs}}</small></h3>
+		<pre id="{{.PublicKey}}"><code>{{.}}</code></pre>
+		{{end}}
+	</body>
+</html>

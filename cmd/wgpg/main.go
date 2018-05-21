@@ -65,20 +65,20 @@ func parseConfig() config {
 }
 
 type api struct {
-	cfg config
-	wg  *wgpg.WG
+	Cfg config
+	WG  *wgpg.WG
 }
 
 func newApi(cfg config, wg *wgpg.WG) *api {
 	ret := &api{
-		cfg: cfg,
-		wg:  wg,
+		Cfg: cfg,
+		WG:  wg,
 	}
 
 	return ret
 }
 
-func (a *api) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (a *api) ServeAPI(w http.ResponseWriter, r *http.Request) {
 	var key wgpg.Key
 	keyBase64 := r.FormValue("PublicKey")
 	err := key.UnmarshalText([]byte(keyBase64))
@@ -87,15 +87,15 @@ func (a *api) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	p, err := a.wg.Get(key)
+	p, err := a.WG.Get(key)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		log.Printf("%+v\n", err)
 		return
 	}
 
-	servpeer := a.wg.Interface.Peer()
-	servpeer.EndPoint = a.cfg.Endpoint
+	servpeer := a.WG.Interface.Peer()
+	servpeer.EndPoint = a.Cfg.Endpoint
 	clientconf := &wgpg.WG{
 		Interface: p.Interface(DEFAULT_PORT),
 		Peer: wgpg.PeerMap{
@@ -109,26 +109,21 @@ func (a *api) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	fmt.Printf("%s\n", clientconf)
 
 	fmt.Printf("\n\n#Serverconf\n")
-	fmt.Printf("%s\n", a.wg)
+	fmt.Printf("%s\n", a.WG)
 
-	if a.cfg.Dev != "" {
-		if err = updateConfig(a.cfg.Dev, p); err != nil {
+	if a.Cfg.Dev != "" {
+		if err = updateConfig(a.Cfg.Dev, p); err != nil {
 			log.Println(err)
 		}
 	}
 }
 
-type index struct {
-	Cfg config
-	WG  *wgpg.WG
-}
-
-func (i index) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (a *api) ServeIndex(w http.ResponseWriter, r *http.Request) {
 	t := template.Must(template.ParseFiles("html/index.html"))
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	i.WG.Lock()
-	defer i.WG.Unlock()
-	err := t.Execute(w, i)
+	a.WG.Lock()
+	defer a.WG.Unlock()
+	err := t.Execute(w, a)
 	if err != nil {
 		log.Println(err)
 	}
@@ -165,8 +160,9 @@ func main() {
 	}
 	fmt.Printf("%s\n", wg)
 
-	http.Handle("/api", newApi(cfg, wg))
-	http.Handle("/", index{cfg, wg})
+	a := newApi(cfg, wg)
+	http.HandleFunc("/api", a.ServeAPI)
+	http.HandleFunc("/", a.ServeIndex)
 	http.Handle("/css/", http.FileServer(http.Dir("html/")))
 
 	if err = http.ListenAndServe(cfg.Addr, nil); err != nil {

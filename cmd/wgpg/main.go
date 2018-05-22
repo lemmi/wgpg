@@ -4,18 +4,16 @@ import (
 	"flag"
 	"fmt"
 	"html/template"
-	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
-	"net/url"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"text/tabwriter"
 
 	"github.com/lemmi/wgpg"
-	"golang.org/x/text/language"
+	"github.com/lemmi/wgpg/internal/lang"
 )
 
 const (
@@ -120,7 +118,7 @@ func (a *api) ServeAPI(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *api) ServeIndex(w http.ResponseWriter, r *http.Request) {
-	tpath := filepath.Join(DEFAULT_HTMLDIR, langFromPath(r.URL), "index.html")
+	tpath := filepath.Join(DEFAULT_HTMLDIR, lang.FromPath(r.URL), "index.html")
 	t := template.Must(template.ParseFiles(tpath))
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -131,59 +129,6 @@ func (a *api) ServeIndex(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Println(err)
 	}
-}
-
-func langFromPath(u *url.URL) string {
-	lang := strings.TrimLeft(u.Path, "/")
-	return strings.SplitN(lang, "/", 1)[0]
-}
-func langRedir(h http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		supportedlangs, err := langSupported(DEFAULT_HTMLDIR)
-		supported := language.NewMatcher(supportedlangs)
-		if err != nil {
-			log.Println("langSupported:", err)
-		}
-
-		if r.URL.Path == "/" {
-			t, _, _ := language.ParseAcceptLanguage(r.Header.Get("Accept-Language"))
-			match, _, _ := supported.Match(t...)
-			http.Redirect(w, r, match.String(), http.StatusFound)
-		}
-		lang := langFromPath(r.URL)
-		_, i := language.MatchStrings(supported, lang)
-		matched := supportedlangs[i].String()
-
-		if lang != matched {
-			http.Redirect(w, r, matched, http.StatusFound)
-		} else {
-			h(w, r)
-		}
-	}
-}
-func langSupported(dir string) ([]language.Tag, error) {
-	var langs []language.Tag
-
-	dirs, err := ioutil.ReadDir(dir)
-	if err != nil {
-		return nil, err
-	}
-
-	for _, dir := range dirs {
-		if !dir.IsDir() {
-			continue
-		}
-		tag, err := language.Parse(dir.Name())
-		if err != nil {
-			return nil, err
-		}
-		if tag == language.English {
-			langs = append([]language.Tag{tag}, langs...)
-		} else {
-			langs = append(langs, tag)
-		}
-	}
-	return langs, nil
 }
 
 func main() {
@@ -198,7 +143,7 @@ func main() {
 
 	a := newApi(cfg, wg)
 	http.HandleFunc("/api", a.ServeAPI)
-	http.HandleFunc("/", langRedir(a.ServeIndex))
+	http.HandleFunc("/", lang.Redir(a.ServeIndex, DEFAULT_HTMLDIR))
 	http.Handle("/css/", http.FileServer(http.Dir("html/")))
 
 	if err = http.ListenAndServe(cfg.Addr, nil); err != nil {

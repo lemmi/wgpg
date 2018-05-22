@@ -4,7 +4,9 @@ import (
 	"bufio"
 	"encoding/base64"
 	"fmt"
+	"io/ioutil"
 	"os"
+	"os/exec"
 	"strconv"
 	"strings"
 	"sync"
@@ -255,4 +257,25 @@ func LoadWG(path string) (*WG, error) {
 	}
 
 	return wg, nil
+}
+
+func UpdateDev(dev string, p Peer) error {
+	f, err := ioutil.TempFile("/tmp", "")
+	if err != nil {
+		return errors.Wrap(err, "Cannot write config update")
+	}
+
+	fname := f.Name()
+	defer os.Remove(fname)
+
+	_, err = f.WriteString(p.String())
+	f.Close()
+	if err != nil {
+		return errors.Wrap(err, "Cannot write config update")
+	}
+
+	cmd := exec.Command("wg", "addconf", dev, fname)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
 }

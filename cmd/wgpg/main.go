@@ -8,15 +8,13 @@ import (
 	"log"
 	"net"
 	"net/http"
-	"os"
-	"os/exec"
+	"net/url"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"text/tabwriter"
 
 	"github.com/lemmi/wgpg"
-	"github.com/pkg/errors"
 	"golang.org/x/text/language"
 )
 
@@ -24,6 +22,7 @@ const (
 	DEFAULT_PORT     = 51820
 	DEFAULT_ADDR     = "127.0.0.1:8888"
 	DEFAULT_ENDPOINT = "example.com:51820"
+	DEFAULT_HTMLDIR  = "html/lang"
 )
 
 type config struct {
@@ -114,49 +113,55 @@ func (a *api) ServeAPI(w http.ResponseWriter, r *http.Request) {
 	fmt.Printf("%s\n", a.WG)
 
 	if a.Cfg.Dev != "" {
-		if err = updateConfig(a.Cfg.Dev, p); err != nil {
+		if err = wgpg.UpdateDev(a.Cfg.Dev, p); err != nil {
 			log.Println(err)
 		}
 	}
 }
 
 func (a *api) ServeIndex(w http.ResponseWriter, r *http.Request) {
-	const htmldir = "html/lang"
-	supportedlangs, err := getSupportedLanguages(htmldir)
-	supported := language.NewMatcher(supportedlangs)
-	if err != nil {
-		log.Println("getSupportedLanguages:", err)
-	}
-
-	if r.URL.Path == "/" {
-		t, _, _ := language.ParseAcceptLanguage(r.Header.Get("Accept-Language"))
-		match, _, _ := supported.Match(t...)
-		http.Redirect(w, r, match.String(), http.StatusFound)
-		return
-	}
-	lang := strings.TrimLeft(r.URL.Path, "/")
-	lang = strings.SplitN(lang, "/", 1)[0]
-	_, i := language.MatchStrings(supported, lang)
-	matched := supportedlangs[i].String()
-
-	if lang != matched {
-		http.Redirect(w, r, matched, http.StatusFound)
-		return
-	}
-
-	tpath := filepath.Join(htmldir, lang, "index.html")
+	tpath := filepath.Join(DEFAULT_HTMLDIR, langFromPath(r.URL), "index.html")
 	t := template.Must(template.ParseFiles(tpath))
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 
 	a.WG.Lock()
 	defer a.WG.Unlock()
-	err = t.Execute(w, a)
+	err := t.Execute(w, a)
 	if err != nil {
 		log.Println(err)
 	}
 }
-func getSupportedLanguages(dir string) ([]language.Tag, error) {
+
+func langFromPath(u *url.URL) string {
+	lang := strings.TrimLeft(u.Path, "/")
+	return strings.SplitN(lang, "/", 1)[0]
+}
+func langRedir(h http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		supportedlangs, err := langSupported(DEFAULT_HTMLDIR)
+		supported := language.NewMatcher(supportedlangs)
+		if err != nil {
+			log.Println("langSupported:", err)
+		}
+
+		if r.URL.Path == "/" {
+			t, _, _ := language.ParseAcceptLanguage(r.Header.Get("Accept-Language"))
+			match, _, _ := supported.Match(t...)
+			http.Redirect(w, r, match.String(), http.StatusFound)
+		}
+		lang := langFromPath(r.URL)
+		_, i := language.MatchStrings(supported, lang)
+		matched := supportedlangs[i].String()
+
+		if lang != matched {
+			http.Redirect(w, r, matched, http.StatusFound)
+		} else {
+			h(w, r)
+		}
+	}
+}
+func langSupported(dir string) ([]language.Tag, error) {
 	var langs []language.Tag
 
 	dirs, err := ioutil.ReadDir(dir)
@@ -181,27 +186,6 @@ func getSupportedLanguages(dir string) ([]language.Tag, error) {
 	return langs, nil
 }
 
-func updateConfig(dev string, p wgpg.Peer) error {
-	f, err := ioutil.TempFile("/tmp", "")
-	if err != nil {
-		return errors.Wrap(err, "Cannot write config update")
-	}
-
-	fname := f.Name()
-	defer os.Remove(fname)
-
-	_, err = f.WriteString(p.String())
-	f.Close()
-	if err != nil {
-		return errors.Wrap(err, "Cannot write config update")
-	}
-
-	cmd := exec.Command("wg", "addconf", dev, fname)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
-}
-
 func main() {
 	cfg := parseConfig()
 	fmt.Println(cfg)
@@ -214,7 +198,7 @@ func main() {
 
 	a := newApi(cfg, wg)
 	http.HandleFunc("/api", a.ServeAPI)
-	http.HandleFunc("/", a.ServeIndex)
+	http.HandleFunc("/", langRedir(a.ServeIndex))
 	http.Handle("/css/", http.FileServer(http.Dir("html/")))
 
 	if err = http.ListenAndServe(cfg.Addr, nil); err != nil {
